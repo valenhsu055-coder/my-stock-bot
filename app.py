@@ -43,32 +43,31 @@ def get_stock_analysis(stock_id):
         return f"❌ 找不到股票代碼 {stock_id}"
     
     df = pd.DataFrame(data['data'])
-    # 計算均線
     df['MA5'] = df['close'].rolling(window=5).mean()
     df['MA20'] = df['close'].rolling(window=20).mean()
     
-    # 取得今日與昨日的均線數據來判斷趨勢
     latest = df.iloc[-1]
     prev = df.iloc[-2]
-    
     price = latest['close']
     
-    # 判斷 MA5 趨勢
+    # 趨勢箭頭
     ma5_trend = "⬆️" if latest['MA5'] > prev['MA5'] else "⬇️"
-    # 判斷 MA20 趨勢
     ma20_trend = "⬆️" if latest['MA20'] > prev['MA20'] else "⬇️"
     
     status = "🔥 強勢" if price > latest['MA5'] > latest['MA20'] else "⚖️ 穩健" if price > latest['MA20'] else "❄️ 偏弱"
     
-    yahoo_base = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW"
+    # Yahoo 股市精準路徑 (加上 .TW 或 .TWO)
+    # 判斷是上市(.TW)還是上櫃(.TWO) - 簡單判斷：4位數多為上市，FinMind資料庫更精確
+    suffix = ".TW" 
+    yahoo_base = f"https://tw.stock.yahoo.com/quote/{stock_id}{suffix}"
     
     return (f"【{stock_id} 趨勢分析】\n"
             f"💰 現價: {price}\n"
             f"📊 MA5: {latest['MA5']:.2f} {ma5_trend}\n"
             f"📉 MA20: {latest['MA20']:.2f} {ma20_trend}\n"
             f"🌡️ 診斷: {status}\n\n"
-            f"💡 點擊下方連結查看詳細數據：\n\n"
-            f"📈 即時 K 線圖：\n{yahoo_base}/chart\n\n"
+            f"💡 點擊下方連結直達分頁：\n\n"
+            f"📈 即時技術分析 (K線)：\n{yahoo_base}/technical-analysis\n\n"
             f"🧧 歷年配股配息：\n{yahoo_base}/dividend\n\n"
             f"🏢 營收與財務：\n{yahoo_base}/revenue")
 
