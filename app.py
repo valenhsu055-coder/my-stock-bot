@@ -29,10 +29,10 @@ def name_to_id(stock_name):
     return None
 
 def get_yield_rate(stock_id):
-    # 改用 DividendResult 資料集抓取配息，並計算平均
+    # 改用 TaiwanStockDividend 資料集，這是最穩定的配息來源
     url = "https://api.finmindtrade.com/api/v4/data"
     parameter = {
-        "dataset": "TaiwanStockDividendResult",
+        "dataset": "TaiwanStockDividend",
         "data_id": stock_id,
         "start_date": f"{datetime.now().year - 11}-01-01",
         "token": FINMIND_TOKEN,
@@ -41,10 +41,12 @@ def get_yield_rate(stock_id):
     data = resp.json()
     if data['msg'] == 'success' and data.get('data'):
         df = pd.DataFrame(data['data'])
-        if 'stock_and_cash_dividend' in df.columns:
-            # 算出這 10 年來的平均年配息
-            avg_div = df['stock_and_cash_dividend'].sum() / 10
-            return avg_div
+        # 確保欄位存在，加總現金股利與股票股利
+        cash = df['CashDividend'] if 'CashDividend' in df.columns else 0
+        stock = df['StockDividend'] if 'StockDividend' in df.columns else 0
+        df['total'] = cash + stock
+        # 算出平均每年配息
+        return df['total'].sum() / 10
     return 0
 
 def get_stock_analysis(stock_id):
@@ -66,7 +68,6 @@ def get_stock_analysis(stock_id):
     latest = df.iloc[-1]
     price = latest['close']
     
-    # 計算殖利率 = (10年平均配息 / 現價) * 100
     avg_div = get_yield_rate(stock_id)
     final_yield = (avg_div / price) * 100 if avg_div > 0 else 0
     
@@ -79,7 +80,7 @@ def get_stock_analysis(stock_id):
            f"近10年平均殖利率: {final_yield:.2f}%\n"
            f"診斷: {status}")
     
-    # 圖片連結：換成最具相容性的圖表網址
+    # 圖片連結：改用 https 且明確指定圖片尺寸，增加 LINE 的相容性
     chart_url = f"https://api.finmindtrade.com/api/v4/chart?dataset=TaiwanStockPrice&data_id={stock_id}&start_date=2025-06-01&width=600&height=400"
     
     return chart_url, msg
@@ -101,7 +102,7 @@ def handle_message(event):
     
     if stock_id:
         img_url, text_result = get_stock_analysis(stock_id)
-        # LINE 規定：必須先發文字，再發圖片
+        # 使用 reply_message 一次發送多個訊息
         line_bot_api.reply_message(
             event.reply_token,
             [
