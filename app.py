@@ -38,12 +38,21 @@ def get_yield_rate(stock_id, current_price):
     }
     resp = requests.get(url, params=parameter)
     data = resp.json()
-    if data['msg'] == 'success' and data['data']:
+    
+    # 檢查有沒有抓到資料
+    if data['msg'] == 'success' and data.get('data'):
         df = pd.DataFrame(data['data'])
-        df['total_dividend'] = df['CashDividend'] + df['StockDividend']
+        
+        # 安全檢查：如果欄位不存在，就補 0
+        cash = df['CashDividend'] if 'CashDividend' in df.columns else 0
+        stock = df['StockDividend'] if 'StockDividend' in df.columns else 0
+        
+        df['total_dividend'] = cash + stock
         avg_dividend = df['total_dividend'].sum() / 10
-        yield_rate = (avg_dividend / current_price) * 100
-        return yield_rate
+        
+        if current_price > 0:
+            yield_rate = (avg_dividend / current_price) * 100
+            return yield_rate
     return 0
 
 def get_stock_analysis(stock_id):
