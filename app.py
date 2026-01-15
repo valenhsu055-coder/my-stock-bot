@@ -28,42 +28,18 @@ def name_to_id(stock_name):
             return match.iloc[0]['stock_id']
     return None
 
-def get_accurate_yield(stock_id, current_price):
-    url = "https://api.finmindtrade.com/api/v4/data"
-    # 抓取過去 15 個月的資料，確保能涵蓋一年四次的配息（季配息）
-    start_date = (datetime.now() - timedelta(days=450)).strftime('%Y-%m-%d')
-    parameter = {
-        "dataset": "TaiwanStockDividend",
-        "data_id": stock_id,
-        "start_date": start_date,
-        "token": FINMIND_TOKEN,
-    }
-    resp = requests.get(url, params=parameter)
-    data = resp.json()
-    if data['msg'] == 'success' and data.get('data'):
-        df = pd.DataFrame(data['data'])
-        # 排除掉還沒發放的預告，只取最近 4 筆已公告/發放的配息
-        cash = df['CashDividend'] if 'CashDividend' in df.columns else 0
-        stock = df['StockDividend'] if 'StockDividend' in df.columns else 0
-        total_dividend_list = (cash + stock).fillna(0).tolist()
-        
-        # 取得最近四次配息的總和
-        yearly_dividend_sum = sum(total_dividend_list[-4:])
-        
-        if current_price > 0:
-            return (yearly_dividend_sum / current_price) * 100
-    return 0
-
 def get_stock_analysis(stock_id):
+    # 抓取基本股價資料
     url = "https://api.finmindtrade.com/api/v4/data"
     parameter = {
         "dataset": "TaiwanStockPrice",
         "data_id": stock_id,
-        "start_date": (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d'), 
+        "start_date": (datetime.now() - timedelta(days=45)).strftime('%Y-%m-%d'), 
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
     data = resp.json()
+    
     if data['msg'] != 'success' or not data['data']:
         return f"❌ 找不到股票代碼 {stock_id}"
     
@@ -73,19 +49,21 @@ def get_stock_analysis(stock_id):
     latest = df.iloc[-1]
     price = latest['close']
     
-    # 使用新邏輯計算殖利率
-    stock_yield = get_accurate_yield(stock_id, price)
-    
+    # 判斷趨勢
     status = "🔥 強勢" if price > latest['MA5'] > latest['MA20'] else "⚖️ 穩健" if price > latest['MA20'] else "❄️ 偏弱"
-    yahoo_url = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW"
     
-    return (f"【{stock_id} 分析】\n"
-            f"現價: {price}\n"
-            f"MA5: {latest['MA5']:.2f}\n"
-            f"MA20: {latest['MA20']:.2f}\n"
-            f"預估年化殖利率: {stock_yield:.2f}%\n"
-            f"診斷: {status}\n\n"
-            f"📈 查看即時 K 線圖：\n{yahoo_url}")
+    # Yahoo 股市各分頁連結
+    yahoo_base = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW"
+    
+    return (f"【{stock_id} 數據分析報告】\n"
+            f"💰 現價: {price}\n"
+            f"📊 MA5: {latest['MA5']:.2f}\n"
+            f"📉 MA20: {latest['MA20']:.2f}\n"
+            f"🌡️ 診斷: {status}\n\n"
+            f"💡 點擊下方連結查看詳細數據：\n\n"
+            f"📈 即時 K 線圖：\n{yahoo_base}/chart\n\n"
+            f"🧧 歷年配股配息 (殖利率)：\n{yahoo_base}/dividend\n\n"
+            f"🏢 營收與財務報表：\n{yahoo_base}/revenue")
 
 @app.route("/callback", methods=['POST'])
 def callback():
