@@ -28,31 +28,23 @@ def name_to_id(stock_name):
             return match.iloc[0]['stock_id']
     return None
 
-def get_yield_rate(stock_id, current_price):
+def get_yield_rate(stock_id):
+    # 改用 DividendResult 資料集抓取配息，並計算平均
     url = "https://api.finmindtrade.com/api/v4/data"
     parameter = {
-        "dataset": "TaiwanStockDividend",
+        "dataset": "TaiwanStockDividendResult",
         "data_id": stock_id,
-        "start_date": f"{datetime.now().year - 10}-01-01",
+        "start_date": f"{datetime.now().year - 11}-01-01",
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
     data = resp.json()
-    
-    # 檢查有沒有抓到資料
     if data['msg'] == 'success' and data.get('data'):
         df = pd.DataFrame(data['data'])
-        
-        # 安全檢查：如果欄位不存在，就補 0
-        cash = df['CashDividend'] if 'CashDividend' in df.columns else 0
-        stock = df['StockDividend'] if 'StockDividend' in df.columns else 0
-        
-        df['total_dividend'] = cash + stock
-        avg_dividend = df['total_dividend'].sum() / 10
-        
-        if current_price > 0:
-            yield_rate = (avg_dividend / current_price) * 100
-            return yield_rate
+        if 'stock_and_cash_dividend' in df.columns:
+            # 算出這 10 年來的平均年配息
+            avg_div = df['stock_and_cash_dividend'].sum() / 10
+            return avg_div
     return 0
 
 def get_stock_analysis(stock_id):
@@ -60,7 +52,7 @@ def get_stock_analysis(stock_id):
     parameter = {
         "dataset": "TaiwanStockPrice",
         "data_id": stock_id,
-        "start_date": "2025-10-01", # 拉長一點確保 MA 計算
+        "start_date": "2025-08-01", 
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
@@ -73,7 +65,10 @@ def get_stock_analysis(stock_id):
     df['MA20'] = df['close'].rolling(window=20).mean()
     latest = df.iloc[-1]
     price = latest['close']
-    avg_yield = get_yield_rate(stock_id, price)
+    
+    # 計算殖利率 = (10年平均配息 / 現價) * 100
+    avg_div = get_yield_rate(stock_id)
+    final_yield = (avg_div / price) * 100 if avg_div > 0 else 0
     
     status = "🔥 強勢" if price > latest['MA5'] > latest['MA20'] else "⚖️ 穩健" if price > latest['MA20'] else "❄️ 偏弱"
     
@@ -81,17 +76,17 @@ def get_stock_analysis(stock_id):
            f"現價: {price}\n"
            f"MA5: {latest['MA5']:.2f}\n"
            f"MA20: {latest['MA20']:.2f}\n"
-           f"近10年平均殖利率: {avg_yield:.2f}%\n"
+           f"近10年平均殖利率: {final_yield:.2f}%\n"
            f"診斷: {status}")
     
-    # 更換為 Yahoo Finance 的圖表連結，這對 LINE 較為穩定
-    chart_url = f"https://chart.finance.yahoo.com/z?s={stock_id}.TW&t=6m&q=l&l=on&z=m&p=m5,m20"
+    # 圖片連結：換成最具相容性的圖表網址
+    chart_url = f"https://api.finmindtrade.com/api/v4/chart?dataset=TaiwanStockPrice&data_id={stock_id}&start_date=2025-06-01&width=600&height=400"
     
     return chart_url, msg
 
 @app.route("/callback", methods=['POST'])
 def callback():
-    signature = request.headers['X-Line-Signature']
+    signature = request.headers.get('X-Line-Signature')
     body = request.get_data(as_text=True)
     try:
         handler.handle(body, signature)
@@ -106,14 +101,17 @@ def handle_message(event):
     
     if stock_id:
         img_url, text_result = get_stock_analysis(stock_id)
-        # LINE 規定 ImageSendMessage 的圖片網址必須是 https
-        replies = [TextSendMessage(text=text_result)]
-        if img_url:
-            # 嘗試使用 Yahoo 圖表
-            replies.append(ImageSendMessage(
-                original_content_url=img_url, 
-                preview_image_url=img_url
-            ))
-        line_bot_api.reply_message(event.reply_token, replies)
+        # LINE 規定：必須先發文字，再發圖片
+        line_bot_api.reply_message(
+            event.reply_token,
+            [
+                TextSendMessage(text=text_result),
+                ImageSendMessage(original_content_url=img_url, preview_image_url=img_url)
+            ]
+        )
     else:
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"🤔 找不到「{user_msg}」"))
+
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
