@@ -15,6 +15,23 @@ FINMIND_TOKEN = os.environ.get('FINMIND_TOKEN')
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+# 新增：把股名轉成代碼的函數
+def name_to_id(stock_name):
+    url = "https://api.finmindtrade.com/api/v4/data"
+    parameter = {
+        "dataset": "TaiwanStockInfo",
+        "token": FINMIND_TOKEN,
+    }
+    resp = requests.get(url, params=parameter)
+    data = resp.json()
+    if data['msg'] == 'success':
+        df = pd.DataFrame(data['data'])
+        # 在「stock_name」這一欄找尋符合的名稱
+        match = df[df['stock_name'] == stock_name]
+        if not match.empty:
+            return match.iloc[0]['stock_id']
+    return None
+
 def get_stock_analysis(stock_id):
     url = "https://api.finmindtrade.com/api/v4/data"
     parameter = {
@@ -48,11 +65,18 @@ def callback():
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_msg = event.message.text.strip()
+    
+    # 邏輯判斷：如果是數字就直接查；如果是文字就先轉代碼
     if user_msg.isdigit():
-        result = get_stock_analysis(user_msg)
+        stock_id = user_msg
+    else:
+        stock_id = name_to_id(user_msg)
+    
+    if stock_id:
+        result = get_stock_analysis(stock_id)
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result))
     else:
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="請輸入4位數台股代碼"))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"🤔 找不到「{user_msg}」，請輸入正確名稱或4位代碼"))
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
