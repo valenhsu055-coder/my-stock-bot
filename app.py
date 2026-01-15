@@ -107,4 +107,8 @@ def handle_message(event):
         result_msg = get_stock_analysis(stock_id)
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result_msg))
     else:
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"🤔 找不到
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"🤔 找不到「{user_msg}」"))
+
+if __name__ == "__main__":
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host='0.0.0.0', port=port)
