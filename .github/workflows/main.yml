@@ -1,0 +1,38 @@
+name: Stock Monitor
+
+on:
+  schedule:
+    # 台灣時間週一至週五 09:00 到 14:00，每 30 分鐘執行一次
+    - cron: '*/30 1-6 * * 1-5' 
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+          
+      - name: Install dependencies
+        run: pip install pandas requests line-bot-sdk
+        
+      - name: Run monitor
+        env:
+          CHANNEL_ACCESS_TOKEN: ${{ secrets.CHANNEL_ACCESS_TOKEN }}
+          FINMIND_TOKEN: ${{ secrets.FINMIND_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+        run: python monitor.py
+
+      # 重要：把「已通知」的紀錄存回 GitHub，這樣下次執行才記得住
+      - name: Commit log
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add notified_log.txt || true
+          git commit -m "Update notification log" || true
+          git push || true
