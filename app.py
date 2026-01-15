@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 import pandas as pd
 from datetime import datetime
@@ -29,22 +29,25 @@ def name_to_id(stock_name):
     return None
 
 def get_yield_rate(stock_id):
-    # 使用最穩定的 DividendResult 資料集
+    # 抓取近 5 年的配息資料
     url = "https://api.finmindtrade.com/api/v4/data"
+    current_year = datetime.now().year
     parameter = {
-        "dataset": "TaiwanStockDividendResult",
+        "dataset": "TaiwanStockDividend",
         "data_id": stock_id,
-        "start_date": "2016-01-01",
+        "start_date": f"{current_year - 5}-01-01",
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
     data = resp.json()
     if data['msg'] == 'success' and data.get('data'):
         df = pd.DataFrame(data['data'])
-        # 加總現金股利與股票股利
-        total_div = df['stock_and_cash_dividend'].sum()
-        # 近 10 年平均
-        return total_div / 10
+        # 加總現金與股票股利
+        cash = df['CashDividend'] if 'CashDividend' in df.columns else 0
+        stock = df['StockDividend'] if 'StockDividend' in df.columns else 0
+        df['total'] = cash + stock
+        # 算出這 5 年來的平均年配息
+        return df['total'].sum() / 5
     return 0
 
 def get_stock_analysis(stock_id):
@@ -52,13 +55,13 @@ def get_stock_analysis(stock_id):
     parameter = {
         "dataset": "TaiwanStockPrice",
         "data_id": stock_id,
-        "start_date": "2025-07-01", 
+        "start_date": "2025-10-01", 
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
     data = resp.json()
     if data['msg'] != 'success' or not data['data']:
-        return None, f"❌ 無法取得 {stock_id} 股價"
+        return f"❌ 找不到股票代碼 {stock_id}"
     
     df = pd.DataFrame(data['data'])
     df['MA5'] = df['close'].rolling(window=5).mean()
@@ -66,22 +69,24 @@ def get_stock_analysis(stock_id):
     latest = df.iloc[-1]
     price = latest['close']
     
+    # 計算近 5 年平均殖利率
     avg_div = get_yield_rate(stock_id)
     final_yield = (avg_div / price) * 100 if avg_div > 0 else 0
     
     status = "🔥 強勢" if price > latest['MA5'] > latest['MA20'] else "⚖️ 穩健" if price > latest['MA20'] else "❄️ 偏弱"
     
+    # 產生 Yahoo 股市 K 線圖連結
+    yahoo_url = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW/chart"
+    
     msg = (f"【{stock_id} 分析】\n"
            f"現價: {price}\n"
            f"MA5: {latest['MA5']:.2f}\n"
            f"MA20: {latest['MA20']:.2f}\n"
-           f"近10年平均殖利率: {final_yield:.2f}%\n"
-           f"診斷: {status}")
+           f"近5年平均殖利率: {final_yield:.2f}%\n"
+           f"診斷: {status}\n\n"
+           f"📈 查看 K 線圖：\n{yahoo_url}")
     
-    # 改用 Yahoo Finance 靜態圖片，這是 LINE 顯示最穩定的來源
-    chart_url = f"https://s.yimg.com/f/i/tw/stock/ms/p/{stock_id}.png"
-    
-    return chart_url, msg
+    return msg
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -99,18 +104,7 @@ def handle_message(event):
     stock_id = user_msg if user_msg.isdigit() else name_to_id(user_msg)
     
     if stock_id:
-        img_url, text_result = get_stock_analysis(stock_id)
-        # 一次發送文字與圖片
-        line_bot_api.reply_message(
-            event.reply_token,
-            [
-                TextSendMessage(text=text_result),
-                ImageSendMessage(original_content_url=img_url, preview_image_url=img_url)
-            ]
-        )
+        result_msg = get_stock_analysis(stock_id)
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=result_msg))
     else:
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"🤔 找不到「{user_msg}」"))
-
-if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"🤔 找不到
