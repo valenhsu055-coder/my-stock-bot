@@ -29,24 +29,22 @@ def name_to_id(stock_name):
     return None
 
 def get_yield_rate(stock_id):
-    # 改用 TaiwanStockDividend 資料集，這是最穩定的配息來源
+    # 使用最穩定的 DividendResult 資料集
     url = "https://api.finmindtrade.com/api/v4/data"
     parameter = {
-        "dataset": "TaiwanStockDividend",
+        "dataset": "TaiwanStockDividendResult",
         "data_id": stock_id,
-        "start_date": f"{datetime.now().year - 11}-01-01",
+        "start_date": "2016-01-01",
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
     data = resp.json()
     if data['msg'] == 'success' and data.get('data'):
         df = pd.DataFrame(data['data'])
-        # 確保欄位存在，加總現金股利與股票股利
-        cash = df['CashDividend'] if 'CashDividend' in df.columns else 0
-        stock = df['StockDividend'] if 'StockDividend' in df.columns else 0
-        df['total'] = cash + stock
-        # 算出平均每年配息
-        return df['total'].sum() / 10
+        # 加總現金股利與股票股利
+        total_div = df['stock_and_cash_dividend'].sum()
+        # 近 10 年平均
+        return total_div / 10
     return 0
 
 def get_stock_analysis(stock_id):
@@ -54,13 +52,13 @@ def get_stock_analysis(stock_id):
     parameter = {
         "dataset": "TaiwanStockPrice",
         "data_id": stock_id,
-        "start_date": "2025-08-01", 
+        "start_date": "2025-07-01", 
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
     data = resp.json()
     if data['msg'] != 'success' or not data['data']:
-        return None, f"❌ 找不到股票代碼 {stock_id}"
+        return None, f"❌ 無法取得 {stock_id} 股價"
     
     df = pd.DataFrame(data['data'])
     df['MA5'] = df['close'].rolling(window=5).mean()
@@ -80,8 +78,8 @@ def get_stock_analysis(stock_id):
            f"近10年平均殖利率: {final_yield:.2f}%\n"
            f"診斷: {status}")
     
-    # 圖片連結：改用 https 且明確指定圖片尺寸，增加 LINE 的相容性
-    chart_url = f"https://api.finmindtrade.com/api/v4/chart?dataset=TaiwanStockPrice&data_id={stock_id}&start_date=2025-06-01&width=600&height=400"
+    # 改用 Yahoo Finance 靜態圖片，這是 LINE 顯示最穩定的來源
+    chart_url = f"https://s.yimg.com/f/i/tw/stock/ms/p/{stock_id}.png"
     
     return chart_url, msg
 
@@ -102,7 +100,7 @@ def handle_message(event):
     
     if stock_id:
         img_url, text_result = get_stock_analysis(stock_id)
-        # 使用 reply_message 一次發送多個訊息
+        # 一次發送文字與圖片
         line_bot_api.reply_message(
             event.reply_token,
             [
