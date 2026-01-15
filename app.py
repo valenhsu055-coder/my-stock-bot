@@ -5,11 +5,10 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# 環境變數
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('CHANNEL_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('CHANNEL_SECRET')
 FINMIND_TOKEN = os.environ.get('FINMIND_TOKEN')
@@ -29,22 +28,30 @@ def name_to_id(stock_name):
             return match.iloc[0]['stock_id']
     return None
 
-def get_official_yield(stock_id):
-    # 改用 DividendResult 抓取官方計算好的殖利率
+def get_accurate_yield(stock_id, current_price):
     url = "https://api.finmindtrade.com/api/v4/data"
+    # 抓取過去 15 個月的資料，確保能涵蓋一年四次的配息（季配息）
+    start_date = (datetime.now() - timedelta(days=450)).strftime('%Y-%m-%d')
     parameter = {
-        "dataset": "TaiwanStockDividendResult",
+        "dataset": "TaiwanStockDividend",
         "data_id": stock_id,
+        "start_date": start_date,
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
     data = resp.json()
     if data['msg'] == 'success' and data.get('data'):
         df = pd.DataFrame(data['data'])
-        # 抓取最後一筆紀錄中的現金殖利率欄位
-        if 'cash_dividend_yield' in df.columns:
-            latest_yield = df.iloc[-1]['cash_dividend_yield']
-            return float(latest_yield)
+        # 排除掉還沒發放的預告，只取最近 4 筆已公告/發放的配息
+        cash = df['CashDividend'] if 'CashDividend' in df.columns else 0
+        stock = df['StockDividend'] if 'StockDividend' in df.columns else 0
+        total_dividend_list = (cash + stock).fillna(0).tolist()
+        
+        # 取得最近四次配息的總和
+        yearly_dividend_sum = sum(total_dividend_list[-4:])
+        
+        if current_price > 0:
+            return (yearly_dividend_sum / current_price) * 100
     return 0
 
 def get_stock_analysis(stock_id):
@@ -52,7 +59,7 @@ def get_stock_analysis(stock_id):
     parameter = {
         "dataset": "TaiwanStockPrice",
         "data_id": stock_id,
-        "start_date": "2025-11-01", 
+        "start_date": (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d'), 
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
@@ -66,8 +73,8 @@ def get_stock_analysis(stock_id):
     latest = df.iloc[-1]
     price = latest['close']
     
-    # 取得官方最新殖利率
-    stock_yield = get_official_yield(stock_id)
+    # 使用新邏輯計算殖利率
+    stock_yield = get_accurate_yield(stock_id, price)
     
     status = "🔥 強勢" if price > latest['MA5'] > latest['MA20'] else "⚖️ 穩健" if price > latest['MA20'] else "❄️ 偏弱"
     yahoo_url = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW"
@@ -76,7 +83,7 @@ def get_stock_analysis(stock_id):
             f"現價: {price}\n"
             f"MA5: {latest['MA5']:.2f}\n"
             f"MA20: {latest['MA20']:.2f}\n"
-            f"當前殖利率: {stock_yield:.2f}%\n"
+            f"預估年化殖利率: {stock_yield:.2f}%\n"
             f"診斷: {status}\n\n"
             f"📈 查看即時 K 線圖：\n{yahoo_url}")
 
