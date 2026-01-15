@@ -30,22 +30,21 @@ def name_to_id(stock_name):
     return None
 
 def get_yield_rate(stock_id):
+    # 使用 DividendResult 資料集，這對計算殖利率最準確
     url = "https://api.finmindtrade.com/api/v4/data"
-    # 抓取近 5 年配息
     parameter = {
-        "dataset": "TaiwanStockDividend",
+        "dataset": "TaiwanStockDividendResult",
         "data_id": stock_id,
-        "start_date": f"{datetime.now().year - 5}-01-01",
+        "start_date": f"{datetime.now().year - 6}-01-01",
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
     data = resp.json()
     if data['msg'] == 'success' and data.get('data'):
         df = pd.DataFrame(data['data'])
-        cash = df['CashDividend'] if 'CashDividend' in df.columns else 0
-        stock = df['StockDividend'] if 'StockDividend' in df.columns else 0
-        df['total'] = cash + stock
-        return df['total'].sum() / 5
+        # 抓取總配息欄位並計算近 5 年平均
+        if 'stock_and_cash_dividend' in df.columns:
+            return df['stock_and_cash_dividend'].tail(5).mean()
     return 0
 
 def get_stock_analysis(stock_id):
@@ -53,7 +52,7 @@ def get_stock_analysis(stock_id):
     parameter = {
         "dataset": "TaiwanStockPrice",
         "data_id": stock_id,
-        "start_date": "2025-10-01", 
+        "start_date": "2025-11-01", 
         "token": FINMIND_TOKEN,
     }
     resp = requests.get(url, params=parameter)
@@ -67,11 +66,14 @@ def get_stock_analysis(stock_id):
     latest = df.iloc[-1]
     price = latest['close']
     
+    # 計算殖利率
     avg_div = get_yield_rate(stock_id)
     final_yield = (avg_div / price) * 100 if avg_div > 0 else 0
     
     status = "🔥 強勢" if price > latest['MA5'] > latest['MA20'] else "⚖️ 穩健" if price > latest['MA20'] else "❄️ 偏弱"
-    yahoo_url = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW/chart"
+    
+    # 修改後的 Yahoo 連結（手機專用即時報價頁面）
+    yahoo_url = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW"
     
     return (f"【{stock_id} 分析】\n"
             f"現價: {price}\n"
@@ -79,7 +81,7 @@ def get_stock_analysis(stock_id):
             f"MA20: {latest['MA20']:.2f}\n"
             f"近5年平均殖利率: {final_yield:.2f}%\n"
             f"診斷: {status}\n\n"
-            f"📈 查看 K 線圖：\n{yahoo_url}")
+            f"📈 查看即時 K 線圖：\n{yahoo_url}")
 
 @app.route("/callback", methods=['POST'])
 def callback():
