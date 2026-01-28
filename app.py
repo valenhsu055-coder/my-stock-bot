@@ -30,7 +30,6 @@ def name_to_id(stock_name):
 
 def get_stock_analysis(stock_id):
     url = "https://api.finmindtrade.com/api/v4/data"
-    # 抓取過去 100 天資料確保 MA60 計算準確
     parameter = {
         "dataset": "TaiwanStockPrice",
         "data_id": stock_id,
@@ -44,7 +43,6 @@ def get_stock_analysis(stock_id):
         return f"❌ 找不到股票代碼 {stock_id}"
     
     df = pd.DataFrame(data['data'])
-    # 計算均線
     df['MA5'] = df['close'].rolling(window=5).mean()
     df['MA20'] = df['close'].rolling(window=20).mean()
     df['MA60'] = df['close'].rolling(window=60).mean()
@@ -53,7 +51,6 @@ def get_stock_analysis(stock_id):
     prev = df.iloc[-2]
     price = latest['close']
     
-    # 趨勢箭頭邏輯
     def get_arrow(curr, prev_val):
         return "⬆️" if curr > prev_val else "⬇️"
 
@@ -61,7 +58,7 @@ def get_stock_analysis(stock_id):
     ma20_arrow = get_arrow(latest['MA20'], prev['MA20'])
     ma60_arrow = get_arrow(latest['MA60'], prev['MA60'])
     
-    # 診斷邏輯升級
+    # 診斷
     if price > latest['MA5'] > latest['MA20'] > latest['MA60']:
         status = "🚀 超級強勢 (多頭排列)"
     elif price > latest['MA20'] > latest['MA60']:
@@ -71,23 +68,31 @@ def get_stock_analysis(stock_id):
     else:
         status = "❄️ 走勢偏弱"
     
-    # Yahoo 連結
+    # 生成 Yahoo 連結
     yahoo_base = f"https://tw.stock.yahoo.com/quote/{stock_id}.TW"
     
-    return (f"【{stock_id} 趨勢分析】\n"
+    # 建立近五年的年份提示
+    this_year = datetime.now().year
+    years_info = f"{this_year-1} | {this_year-2} | {this_year-3} | {this_year-4} | {this_year-5}"
+
+    return (f"【{stock_id} 趨勢與殖利率分析】\n"
             f"💰 現價: {price}\n"
             f"📊 MA5:  {latest['MA5']:.2f} {ma5_arrow}\n"
             f"📉 MA20: {latest['MA20']:.2f} {ma20_arrow}\n"
             f"🧬 MA60: {latest['MA60']:.2f} {ma60_arrow}\n"
             f"🌡️ 診斷: {status}\n\n"
-            f"💡 點擊下方連結直達分頁：\n\n"
-            f"📈 技術分析 (K線圖)：\n{yahoo_base}/technical-analysis\n\n"
-            f"🧧 歷年配股配息：\n{yahoo_base}/dividend\n\n"
-            f"🏢 營收與財務：\n{yahoo_base}/revenue")
+            f"📅 歷年殖利率表現 (近5年)：\n"
+            f"({years_info})\n"
+            f"👇 請點擊下方連結查看詳細配息表：\n"
+            f"{yahoo_base}/dividend\n\n"
+            f"📈 即時 K 線圖 (技術分析)：\n"
+            f"{yahoo_base}/technical-analysis\n\n"
+            f"🏢 營收財務狀況：\n"
+            f"{yahoo_base}/revenue")
 
 @app.route("/callback", methods=['POST'])
 def callback():
-    signature = request.headers.get('X-Line-Signature')
+    signature = request.headers.get('X-Signature') or request.headers.get('X-Line-Signature')
     body = request.get_data(as_text=True)
     try:
         handler.handle(body, signature)
