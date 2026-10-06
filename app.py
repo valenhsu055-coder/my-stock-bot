@@ -8,9 +8,9 @@ import pandas as pd
 
 app = Flask(__name__)
 
-# 請換成你自己的 LINE 金鑰
-LINE_CHANNEL_ACCESS_TOKEN = "HDQozDHkTr1ciRPTFS9AKO5egPaxGCcga2GVXAlWVSt7SSIvSJW86aoBou6Ko2yrwx5ZruiK1KXsLk3wPe1pkeKRrbx+UQe+Gw2vkwyQC0qlBpl/qgF2qryPl7VOw9zmxvME1hEkf+9EaU5xmZoXMQdB04t89/1O/w1cDnyilFU="
-LINE_CHANNEL_SECRET = "64b3bbb5f0fb6e94de8e02665087570c"
+# 請確認你的真實金鑰已經填在這裡
+LINE_CHANNEL_ACCESS_TOKEN = "wPe1pkeKRRbx+UQe+Gw2vkwyQC0q1Bpl/qgF2qryP1V0W9zmwZmXZoXMQdB4t89/10/w1cDny1FU="
+LINE_CHANNEL_SECRET = "64b3bbb5f0fb6e94de8e2665087570c"
 
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
