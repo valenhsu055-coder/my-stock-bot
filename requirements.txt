@@ -1,5 +1,5 @@
-Flask
+flask
 line-bot-sdk
 yfinance
 pandas
-gunicorn
+openai
