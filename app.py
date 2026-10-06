@@ -8,7 +8,7 @@ import pandas as pd
 
 app = Flask(__name__)
 
-# 請確認你的真實金鑰已經填在這裡
+# 已代入你提供的新金鑰與密鑰
 LINE_CHANNEL_ACCESS_TOKEN = "Ey3boIZIsQfoUy2xzPs3vpj3vF76X/7mZRIzIJFES+C8B5L9uuGfpuK6Yvub1yW7wx5ZruiK1KXsLk3wPe1pkeKRrbx+UQe+Gw2vkwyQC0pPASu2koBaDhrs/UfmKn/GA/zFvrGkp2SHCrZMCGnslQdB04t89/1O/w1cDnyilFU="
 LINE_CHANNEL_SECRET = "64b3bbb5f0fb6e94de8e02665087570c"
 
@@ -29,16 +29,36 @@ def callback():
 def handle_message(event):
     user_message = event.message.text.strip()
     
-    # 支援查詢的股票清單與代號
-    stock_mapping = {
-        "瑞儀": "6176.TW", "6176": "6176.TW",
-        "美律": "2439.TW", "2439": "2439.TW",
-        "華新科": "2492.TW", "2492": "2492.TW"
+    # 常見台股名稱與代號對照表（你可以隨時在這裡新增更多股票名稱）
+    name_to_code = {
+        "瑞儀": "6176.TW",
+        "美律": "2439.TW",
+        "華新科": "2492.TW",
+        "台積電": "2330.TW",
+        "鴻海": "2317.TW",
+        "聯發科": "2454.TW",
+        "長榮": "2603.TW",
+        "聯電": "2303.TW",
+        "廣達": "2382.TW",
+        "晶采": "8049.TW",
+        "鈊象": "3293.TW",
+        "國巨": "2327.TW",
     }
     
-    ticker_symbol = stock_mapping.get(user_message)
+    # 判斷使用者輸入的是名稱還是代號
+    if user_message in name_to_code:
+        ticker_symbol = name_to_code[user_message]
+        display_name = user_message
+    elif user_message.isdigit():
+        # 如果輸入純數字（例如 2330），自動加上 .TW
+        ticker_symbol = user_message + ".TW"
+        display_name = user_message
+    else:
+        # 如果直接輸入完整代號（例如 2330.TW）
+        ticker_symbol = user_message.upper()
+        display_name = user_message
     
-    if ticker_symbol:
+    try:
         stock = yf.Ticker(ticker_symbol)
         df = stock.history(period="3mo")
         
@@ -51,7 +71,7 @@ def handle_message(event):
             resistance = round(recent_high * 0.99, 2)
             
             reply_text = (
-                f"📊 【{user_message} 智能技術分析報告】\n"
+                f"📊 【{display_name} 智能技術分析報告】\n"
                 f"----------------------------------\n"
                 f"• 現價參考：{current_price} 元\n"
                 f"• 近期支撐區 (地板)：約 {support} 元\n"
@@ -67,9 +87,9 @@ def handle_message(event):
                 f"⚠️ 註：程式自動化計算，非絕對投資建議。"
             )
         else:
-            reply_text = f"抱歉，無法取得 {user_message} 的即時數據。"
-    else:
-        reply_text = "請輸入正確的台股代號或名稱（例如：6176、瑞儀、2439、美律、2492、華新科）。"
+            reply_text = f"抱歉，找不到「{user_message}」的資料，請確認代號或名稱是否正確。"
+    except Exception as e:
+        reply_text = f"查詢時發生錯誤，請確認輸入正確的台股代號或名稱。"
 
     line_bot_api.reply_message(
         event.reply_token,
